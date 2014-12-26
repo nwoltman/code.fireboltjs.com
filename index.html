@@ -1,0 +1,114 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="author" content="Nathan Woltman">
+  <meta name="description" content="Firebolt is a modern, high performance JavaScript library with a very small file size. It is based on jQuery and Prototype and supports today's most popular desktop and mobile browsers.">
+
+  <title>Firebolt Downloads and CDN</title>
+
+  <link rel="icon" href="//fireboltjs.com/favicon.ico?v=1">
+
+  <!-- Bootstrap Styles -->
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap-theme.min.css">
+
+  <!-- Site Styles -->
+  <link rel="stylesheet" href="//fireboltjs.com/css/style.css">
+  <style>h3{font-weight: bold;}</style>
+
+  <!-- Google Analytics -->
+  <script>(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)})(window,document,'script','//www.google-analytics.com/analytics.js','ga');ga('create','UA-41848498-3','auto');ga('send','pageview');</script>
+</head>
+<body>
+  <div class="navbar navbar-default navbar-static-top" role="navigation">
+    <div class="container">
+      <div class="navbar-header">
+        <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+          <span class="sr-only">Toggle navigation</span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+          <span class="icon-bar"></span>
+        </button>
+        <a class="navbar-brand" href="#">
+          <strong>Firebolt</strong>
+          <img src="//fireboltjs.com/img/logo_small.png" alt="Firebolt">
+        </a>
+      </div>
+      <div class="navbar-collapse collapse">
+        <ul class="nav navbar-nav">
+          <li><a href="//fireboltjs.com/">Home</a></li>
+          <li><a href="//fireboltjs.com/tc">Test Chamber</a></li>
+          <li><a href="http://api.fireboltjs.com/">Firebolt API</a></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <header class="page-header">
+      <h1>Firebolt Downloads and CDN</h1>
+    </header>
+
+    <table>
+      <tr>
+        <th style="vertical-align:top; padding-right:.7em;">Note:</th>
+        <td>Only the minified version of Firebolt found in the release package contains the <code>//# sourceMappingURL</code> comment. It is not included in the file located at the CDN link.</td>
+      </tr>
+    </table>
+
+    <br>
+
+    <h3>Latest Version</h3>
+    <p>
+      CDN/download links: <a href="/firebolt.js">uncompresed</a>, <a href="/firebolt.min.js">minified</a>, <a href="/firebolt.min.map">map</a>
+    </p>
+    <p>
+      <a href="/firebolt.zip" class="btn btn-default" title="firebolt.zip" download>Download release package</a>
+    </p>
+
+    <br>
+
+    <h3>All Releases</h3>
+    <p>CDN links to release versions are of the form:</p>
+    <pre>code.fireboltjs.com/v/VERSION_NUMBER/FILE_NAME</pre>
+    <p>where <code>FILE_NAME</code> is one of <code>firebolt.js</code>, <code>firebolt.min.js</code>, or <code>firebolt.min.map</code> and the version numbers are as follows:</p>
+    <ul>
+      <li><a href="/v/0.10.0/firebolt.zip" title="Download v0.10.0 release" download>0.10.0</a></li>
+    </ul>
+  </div>
+
+  <br>
+
+  <div id="footer">
+    <div class="container">
+      <p>
+        &copy; 2014 <a href="https://github.com/woollybogger">Nathan Woltman</a>
+        <span class="pull-right">
+          <span class="hidden-xs">Firebolt and this website are released under the</span>
+          <a href="//fireboltjs.com/license">MIT License</a>
+        </span>
+      </p>
+    </div>
+  </div>
+
+  <!-- Firebolt -->
+  <script src="/firebolt.min.js"></script>
+  <!-- Mobile Navbar Toggling -->
+  <script>
+    $QS('.navbar-toggle[data-toggle=collapse]').on('click', function() {
+      var target = $1(this.toggleClass('collapsed').attr('data-target'));
+      if (target.hasClass('in')) {
+        target.removeClass('collapse in').addClass('collapsing').style.height = '';
+      } else {
+        target.removeClass('collapse').addClass('collapsing in').style.height = target.scrollHeight + 'px';
+      }
+      setTimeout(function() {
+        target.removeClass('collapsing').addClass('collapse');
+      }, 350);
+    });
+  </script>
+</body>
+</html>
