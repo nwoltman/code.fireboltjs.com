@@ -1,0 +1,10 @@
+sudo: false
+script: "" # don't build or test anything
+deploy:
+  provider: s3
+  bucket: code.fireboltjs.com
+  skip_cleanup: true
+  access_key_id:
+    secure: SIFyjgmdTR5BPhOTNp6YydkSvTukSomEnc7v70fkfVI8prJAQ3/cqbCJelC9ZSlbfTcwZjm8g1n4zwis1AdnnUAp27ndpeJozTH6qJN4oqHGA3uHDKI7D2mSM9cT8VFmQZCrXsssM5vZSOZcdFlIy7EUKPGdQe6qtq+evSMYoaE=
+  secret_access_key:
+    secure: Rof++4WMa+rtdGrme2yRL0ITnWqcWQAKxeI+I5cfc9NABMvHTRDOMIFzqSUHqD9p1YGdR/iecghw39yWhpfwvz8+s1nJKlEga/tF7imkPjjY0NTRhUvS6xIMhAt5xsqoOllYEKcba2hxiqJad8XpAvyiIaORRlc+r321oAl6Cw0=
