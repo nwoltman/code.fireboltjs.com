@@ -1,5 +1,7 @@
 #!/bin/sh
 
+cd root
+
 if (command -v php >/dev/null 2>&1); then
   php -S localhost:8000 &
   PID=$!

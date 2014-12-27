@@ -2,7 +2,7 @@ module.exports = function(grunt) {
   'use strict';
 
   // Extract the version number from the latest minified file
-  var code = require('fs').readFileSync('firebolt.min.js', {encoding: 'utf8'});
+  var code = require('fs').readFileSync('root/firebolt.min.js', {encoding: 'utf8'});
   var version = /v(\d+\.\d+\.\d+)\b/.exec(code)[1];
 
   // Project configuration
@@ -11,7 +11,8 @@ module.exports = function(grunt) {
       main: {
         nonnull: true,
         expand: true,
-        src: ['*.html', 'firebolt*', 'Firebolt.zip', 'v/' + version + '/*'],
+        cwd: 'root/',
+        src: ['*', 'v/' + version + '/*'],
         dest: 'dist/'
       }
     }
