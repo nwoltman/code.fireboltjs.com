@@ -1,6 +1,6 @@
 @echo off
 
-cd root
+cd src
 
 php --version >nul 2>&1 && (
   START "Local PHP Server" /MIN php -S localhost:8000
