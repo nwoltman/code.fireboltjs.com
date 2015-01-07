@@ -4,7 +4,6 @@ node_js:
   - '0.10'
 before_script:
   - npm install -g grunt-cli
-  - git submodule update --init --recursive
 deploy:
   provider: s3
   bucket: code.fireboltjs.com
