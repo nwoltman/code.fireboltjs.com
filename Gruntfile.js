@@ -9,11 +9,10 @@ module.exports = function(grunt) {
   grunt.initConfig({
     copy: {
       main: {
-        nonnull: true,
-        expand: true,
-        cwd: 'src/',
-        src: ['*', 'v/' + version + '/*'],
-        dest: 'dist/'
+        files: [
+          {nonnull: true, expand: true, cwd: 'src/', src: '*', dest: 'dist/'},
+          {nonnull: true, expand: true, cwd: 'src/', src: '[Ff]irebolt.*', dest: 'dist/v/' + version + '/'}
+        ]
       }
     }
   });
