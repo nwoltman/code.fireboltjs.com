@@ -47,7 +47,7 @@
     </div>
   </div>
 
-  <div class="container">
+  <main class="container">
     <header class="page-header">
       <h1>Firebolt Downloads and CDN</h1>
     </header>
@@ -66,7 +66,7 @@
       CDN/download links: <a href="/firebolt.js">uncompresed</a>, <a href="/firebolt.min.js">minified</a>, <a href="/firebolt.min.map">map</a>
     </p>
     <p>
-      <a href="/firebolt.zip" class="btn btn-default" title="firebolt.zip" download>Download release package (v0.11.0)</a>
+      <a href="/Firebolt.zip" title="Firebolt.zip" id="btn-drp" class="btn btn-default" download>Download release package</a>
     </p>
 
     <br>
@@ -75,11 +75,7 @@
     <p>CDN links to release versions are of the form:</p>
     <pre>code.fireboltjs.com/v/VERSION_NUMBER/FILE_NAME</pre>
     <p>where <code>FILE_NAME</code> is one of <code>firebolt.js</code>, <code>firebolt.min.js</code>, or <code>firebolt.min.map</code> and the version numbers are as follows:</p>
-    <ul>
-      <li><a href="/v/0.11.0/firebolt.zip" title="Download v0.11.0 release" download>0.11.0</a> - <a href="//api.fireboltjs.com/v/0.11.0/" title="View v0.11.0 API">API</a></li>
-      <li><a href="/v/0.10.0/firebolt.zip" title="Download v0.10.0 release" download>0.10.0</a> - <a href="//api.fireboltjs.com/v/0.10.0/" title="View v0.10.0 API">API</a></li>
-    </ul>
-  </div>
+  </main>
 
   <br>
 
@@ -94,6 +90,41 @@
       </p>
     </div>
   </div>
+
+  <script>
+    var releases = [
+      '0.11.0',
+      '0.10.0'
+    ];
+
+    // Set version in the download release package button
+    document.getElementById('btn-drp').textContent += ' (v' + releases[0] + ')';
+
+    // Add all versions to the "all releases" list
+    var ul = document.createElement('ul');
+    for (var i = 0; i < releases.length; i++) {
+      var version = releases[i];
+      var li = document.createElement('li');
+      var aDownload = document.createElement('a');
+      var aApi = aDownload.cloneNode();
+
+      aDownload.href = '/v/' + version + '/Firebolt.zip';
+      aDownload.title = 'Download the v' + version + ' release';
+      aDownload.download = '';
+      aDownload.textContent = version;
+      li.appendChild(aDownload);
+
+      li.appendChild(document.createTextNode(' - '));
+
+      aApi.href = '//api.fireboltjs.com/v/' + version + '/';
+      aApi.title = 'View the API for v' + version;
+      aApi.textContent = 'API';
+      li.appendChild(aApi);
+
+      ul.appendChild(li);
+    };
+    document.getElementsByTagName('main')[0].appendChild(ul);
+  </script>
 
   <!-- Firebolt -->
   <script src="/firebolt.min.js"></script>
