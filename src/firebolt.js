@@ -1,6 +1,6 @@
 /*!
  * Firebolt core file
- * @version 0.11.0
+ * @version 0.12.0
  * @author Nathan Woltman
  * @copyright 2014-2015 Nathan Woltman
  * @license MIT https://github.com/woollybogger/Firebolt/blob/master/LICENSE.txt
@@ -65,7 +65,7 @@ function copyDataAndEvents(nodeA, nodeB, doNotCopyChildNodes) {
 	// Data
 	if (data) {
 		// Use Firebolt.data in case the node was created in a different window
-		extendDeep(Firebolt.data(nodeB), data);
+		extend(true, Firebolt.data(nodeB), data);
 	}
 
 	/* From this point on, the `data` variable is reused as the counter (or property name) in loops */
@@ -73,7 +73,7 @@ function copyDataAndEvents(nodeA, nodeB, doNotCopyChildNodes) {
 	// Events
 	if (events) {
 		// Copy event data and set the handler for each type of event
-		nodeB._$E_ = extendDeep({}, events);
+		nodeB._$E_ = extend(true, {}, events);
 		for (data in events) {
 			nodeB.addEventListener(data, nodeEventHandler);
 		}
@@ -136,7 +136,7 @@ function cssMath(curVal, changeVal, type, element, property) {
 		curVal = 0;
 	}
 
-	return curVal + type; //i.e. 1.5 + "em" -> "1.5em"
+	return curVal + type; // i.e. 1.5 + "em" -> "1.5em"
 }
 
 /*
@@ -207,11 +207,11 @@ function getFirstSetEachElement(fn, isSetter) {
  * Returns a function that creates a set of elements in a certain direction around
  * a given node (i.e. parents, children, siblings, find -> all descendants).
  * 
- * @param {Function|String} direction - A function or name of a function that retrieves elements for a single node.
+ * @param {Function} getDirectionElement - A function that retrieves an element or elements for a single node.
  * @param {Function|Number} [sorter] - A function used to sort the union of multiple sets of returned elements.
  *     If sorter == 0, return an 'until' Node function.
  */
-function getGetDirElementsFunc(direction, sorter) {
+function getGetDirElementsFunc(getDirectionElement, sorter) {
 	if (sorter) {
 		// For NodeCollection.prototype
 		return function() {
@@ -219,14 +219,14 @@ function getGetDirElementsFunc(direction, sorter) {
 
 			// Simple and speedy for one node
 			if (len === 1) {
-				return direction.apply(this[0], arguments);
+				return getDirectionElement.apply(this[0], arguments);
 			}
 
 			// Build a list of NodeCollections
 			var collections = [],
 				i = 0;
 			for (; i < len; i++) {
-				collections[i] = direction.apply(this[i], arguments);
+				collections[i] = getDirectionElement.apply(this[i], arguments);
 			}
 
 			// Union the collections so that the result contains unique elements and return the sorted result
@@ -246,7 +246,7 @@ function getGetDirElementsFunc(direction, sorter) {
 					}
 					: until && until.length // Until Node[] contains the current node
 						? function() {
-							return until.contains(node);
+							return until.indexOf(node) >= 0;
 						}
 						// Until nodes are equal (or if `until.length === 0`, this will always return false)
 						: function() {
@@ -255,7 +255,7 @@ function getGetDirElementsFunc(direction, sorter) {
 
 			// Traverse all nodes in the direction and add them (or if there is a selector the ones that match it)
 			// to the NodeCollection until the `stop()` function returns `true`
-			while ((node = node[direction]) && !stop()) {
+			while ((node = getDirectionElement(node)) && !stop()) {
 				if (!filter || node.matches(filter)) {
 					push1(nc, node);
 				}
@@ -271,7 +271,7 @@ function getGetDirElementsFunc(direction, sorter) {
 
 			// Traverse all nodes in the direction and add them (or if there is a selector the ones that match it)
 			// to the NodeCollection
-			while (node = node[direction]) {
+			while (node = getDirectionElement(node)) {
 				if (!selector || node.matches(selector)) {
 					push1(nc, node);
 				}
@@ -281,41 +281,25 @@ function getGetDirElementsFunc(direction, sorter) {
 		};
 }
 
-function getHTMLElementAfterPutOrPrependWith(htmlLocation, inserter) {
-	return function() {
-		var i = arguments.length - 1,
-			arg;
-
-		for (; i >= 0; i--) {
-			if (typeofString(arg = arguments[i])) {
-				this.insertAdjacentHTML(htmlLocation, arg);
-			} else {
-				inserter(isNode(arg) ? arg : createFragment(arg), this);
-			}
-		}
-
-		return this;
-	};
-}
-
 /*
  * Returns a function for Node#next(), Node#prev(), NodeCollection#next(), or NodeCollection#prev().
  * 
+ * @param {Function} getDirElementSibling - Either `getNextElementSibling` or `getPreviousElementSibling`.
  * @param {Boolean} [forNode=false] - If truthy, returns the function for Node.prototype,
  *     otherwise the function for NodeCollection.prototype is returned.
  */
-function getNextOrPrevFunc(dirElementSibling, forNode) {
+function getNextOrPrevFunc(getDirElementSibling, forNode) {
 	return forNode
 		? function(selector) {
-			var sibling = this[dirElementSibling];
-			return (!selector || sibling && sibling.matches(selector)) && sibling || null;
+			var sibling = getDirElementSibling(this);
+			return (!selector || sibling && sibling.matches(selector)) ? sibling : null;
 		}
 		: function(selector) {
 			var nc = new NodeCollection(),
 				i = 0,
 				sibling;
 			for (; i < this.length; i++) {
-				sibling = this[i][dirElementSibling];
+				sibling = getDirElementSibling(this[i]);
 				if (sibling && (!selector || sibling.matches(selector))) {
 					push1(nc, sibling);
 				}
@@ -413,7 +397,7 @@ function getNodePutOrWithFunction(inserter) {
 }
 
 /*
- * Takes in the input from `.wrap()` or `.wrapInner()` and returns a new
+ * Takes in the input from `.wrapWith()` or `.wrapInner()` and returns a new
  * element (or null/undefined) to be the wrapping element.
  */
 function getWrappingElement(input) {
@@ -503,23 +487,24 @@ function returnFalse() {
 function sanitizeCssPropName(name) {
 	// Camelize the property name and check if it exists on the saved iframe's style object
 	name = camelize(name);
-	if (!(name in iframe.style)) {
-		// The camelized input property name is not supported, so make the vendor name
-		return cssVendorPrefix + name[0].toUpperCase() + name.slice(1);
+	if (name in iframe.style) {
+		return name;
 	}
-	return name;
+
+	// The camelized input property name is not supported, so make the vendor name
+	return cssVendorPrefix + name[0].toUpperCase() + name.slice(1);
 }
 
 /*
- * Takes in an Array constructor and creates a partial ES6 shim for the `.from()` function,
- * setting it on the constructor if it does not already exist, then returns that function.
+ * Takes in an Array constructor and polyfills Array.from() and Array.of() if they
+ * do not already exist and returns the polyfilled version of Array.from().
  * 
  * @param {function} - The Array or NodeCollection constructor function.
  * @returns {function} - The created `from` function.
  */
-function setAndGetArrayFromFunction(constructor) {
+function setArrayStaticsAndGetFromFunction(constructor) {
 	function from(arrayLike) {
-		var len = arrayLike.length,
+		var len = arrayLike.length || 0,
 			array = new constructor(len),
 			i = 0;
 
@@ -529,6 +514,18 @@ function setAndGetArrayFromFunction(constructor) {
 
 		return array;
 	}
+
+	constructor.of = constructor.of || function() {
+		var len = arguments.length,
+			array = new constructor(len),
+			i = 0;
+
+		for (; i < len; i++) {
+			array[i] = arguments[i];
+		}
+
+		return array;
+	};
 
 	constructor.from = constructor.from || from;
 
@@ -583,12 +580,39 @@ function typeofString(value) {
 }
 
 var
-	/* Browser/Engine detection */
+	// Browser/Engine detection
 	isIE = document.documentMode,
 	isIOS = /^iP/.test(navigator.platform), // iPhone, iPad, iPod
 	usesWebkit = window.webkitURL,
 	webkitNotIOS = usesWebkit && !isIOS,
 	usesGecko = window.mozInnerScreenX != _undefined,
+
+	// Some browser compatibility functions
+	characterData = document.createTextNode(''),
+	getNextElementSibling = (characterData.nextElementSibling === _undefined)
+		? function(el) {
+			while ((el = el.nextSibling) && el.nodeType !== 1);
+			return el;
+		}
+		: function(el) {
+			return el.nextElementSibling;
+		},
+	getPreviousElementSibling = (characterData.previousElementSibling === _undefined)
+		? function(el) {
+			while ((el = el.previousSibling) && el.nodeType !== 1);
+			return el;
+		}
+		: function(el) {
+			return el.previousElementSibling;
+		},
+	getParentElement = (characterData.parentElement === _undefined)
+		? function(el) {
+			el = el.parentNode;
+			return el && isNodeElement(el) ? el : null;
+		}
+		: function(el) {
+			return el.parentElement;
+		},
 
 	/*
 	 * Determines if an item is a Node.
@@ -603,8 +627,6 @@ var
 		},
 
 	// Property strings
-	nextElementSibling = 'nextElementSibling',
-	previousElementSibling = 'previousElementSibling',
 	prototype = 'prototype',
 
 	// Prototype references
@@ -619,7 +641,7 @@ var
 
 	// Helpers
 	isArray = Array.isArray,
-	arrayFrom = setAndGetArrayFromFunction(Array),
+	arrayFrom = setArrayStaticsAndGetFromFunction(Array),
 	array_push = ArrayPrototype.push,
 	stopPropagation = EventPrototype.stopPropagation,
 	defineProperty = Object.defineProperty,
@@ -720,7 +742,6 @@ var
 	TOGGLE = 'toggle',
 
 	/* Misc */
-	documentHead = document.head, // The document's <head> element
 	iframe = createElement('iframe'), // Used for subclassing Array and determining default CSS values
 
 	/* CSS */
@@ -751,7 +772,7 @@ var
  * @summary Creates a new Array instance from an array-like object.
  * 
  * @description
- * This is a partial shim for the ES6-defined
+ * This is a partial polyfill for the ES6-defined
  * {@linkcode https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/from|Array.from()}
  * function that only accepts array-like objects and does not support the optional `mapFn` or `thisArg` arguments.
  * 
@@ -763,6 +784,19 @@ var
  * @param {Object} arrayLike - An array-like object to convert to an array.
  * @returns {Array}
  */
+
+ /**
+  * @summary Creates a new Array instance with a variable number of arguments.
+  * 
+  * @description
+  * This is a complete polyfill for the ES6-defined
+  * {@linkcode https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/of|Array.of()}
+  * for browsers that have not implemented it function yet.
+  * 
+  * @function Array.of
+  * @param {...*} elementN - Elements with which to populate the new array.
+  * @returns {Array}
+  */
 
 prototypeExtensions = {
 	/**
@@ -782,16 +816,6 @@ prototypeExtensions = {
 	 */
 	clone: function() {
 		return arrayFrom(this);
-	},
-
-	/**
-	 * Determines if the input item is in the array.
-	 * 
-	 * @function Array#contains
-	 * @returns {Boolean} `true` if the item is in the array, `false` otherwise.
-	 */
-	contains: ArrayPrototype.contains || function(e) {
-		return this.indexOf(e) >= 0;
 	},
 
 	/**
@@ -869,6 +893,18 @@ prototypeExtensions = {
 	 */
 	get: function(index) {
 		return this[index < 0 ? index + this.length : index];
+	},
+
+	/**
+	 * Determines if the array includes a certain element.
+	 * 
+	 * @function Array#includes
+	 * @param {*} searchElement - The element to search for.
+	 * @param {Number} [fromIndex=0] - The index in this array at which to begin the search.
+	 * @returns {Boolean} `true` if the item is in the array, `false` otherwise.
+	 */
+	includes: ArrayPrototype.includes || function() {
+		return ArrayPrototype.indexOf.apply(this, arguments) >= 0;
 	},
 
 	/**
@@ -1136,6 +1172,57 @@ ElementPrototype.QS = ElementPrototype.querySelector;
  */
 ElementPrototype.QSA = ElementPrototype.querySelectorAll;
 
+/*
+ * More performant version of Node#afterPut for Elements.
+ * @see Node#afterPut
+ */
+ElementPrototype.afterPut = function() {
+	var i = arguments.length - 1,
+		arg;
+
+	for (; i >= 0; i--) {
+		if (typeofString(arg = arguments[i])) {
+			this.insertAdjacentHTML('afterend', arg);
+		} else {
+			insertAfter(isNode(arg) ? arg : createFragment(arg), this);
+		}
+	}
+
+	return this;
+};
+
+/*
+ * More performant version of Node#appendWith for Elements.
+ * @see Node#appendWith
+ */
+ElementPrototype.appendWith = function() {
+	for (var i = 0, arg; i < arguments.length; i++) {
+		if (typeofString(arg = arguments[i])) {
+			this.insertAdjacentHTML('beforeend', arg);
+		} else {
+			this.appendChild(isNode(arg) ? arg : createFragment(arg));
+		}
+	}
+
+	return this;
+};
+
+/*
+ * More performant version of Node#beforePut for Elements.
+ * @see Node#beforePut
+ */
+ElementPrototype.beforePut = function() {
+	for (var i = 0, arg; i < arguments.length; i++) {
+		if (typeofString(arg = arguments[i])) {
+			this.insertAdjacentHTML('beforebegin', arg);
+		} else {
+			insertBefore(isNode(arg) ? arg : createFragment(arg), this);
+		}
+	}
+
+	return this;
+};
+
 /**
  * Gets the value of the element's specified attribute.
  * 
@@ -1232,6 +1319,32 @@ ElementPrototype.data = function(key, value) {
 };
 
 /**
+ * Removes all of the element's child nodes.
+ * 
+ * @example
+ * // HTML (before)
+ * // <div id="mydiv">
+ * //   <span>Inside Span</span>
+ * //   Some Text
+ * // </div>
+ * 
+ * // JavaScript
+ * $ID('mydiv').empty();
+ *
+ * // HTML (after)
+ * // <div id="mydiv"></div>
+ * 
+ * @function Element#empty
+ */
+ElementPrototype.empty = function() {
+	while (this.firstChild) {
+		this.removeChild(this.firstChild);
+	}
+
+	return this;
+};
+
+/**
  * Gets the descendants of the element, filtered by a selector.
  * 
  * __Note:__ The main difference between when this function and `Element#querySelectorAll()` (or Firebolt's
@@ -1288,6 +1401,31 @@ ElementPrototype.find = function(selector) {
 };
 
 /**
+ * Gets the element's inner HTML.
+ * 
+ * @function Element#html
+ * @returns {String} The element's inner HTML.
+ */
+/**
+ * Sets the element's inner HTML.
+ * 
+ * __ProTip:__ Quite often, this function is used to set the text contents of elements. However, if the text being
+ * set does not (or should not) contain any actual HTML, the {@linkcode Node#text|Node#text()} function should be
+ * used instead as it will be faster and also prevent unwanted HTML from being injected into the page.
+ * 
+ * @function Element#html
+ * @param {String} htmlString
+ */
+ElementPrototype.html = function(htmlString) {
+	if (htmlString === _undefined) {
+		return this.innerHTML; // Get
+	}
+	this.innerHTML = htmlString; // Set
+
+	return this;
+};
+
+/**
  * Determines if the element matches the specified CSS selector.
  * 
  * @function Element#matches
@@ -1299,6 +1437,25 @@ ElementPrototype.matches = ElementPrototype.matches ||
                            ElementPrototype.mozMatchesSelector ||
                            ElementPrototype.msMatchesSelector ||
                            ElementPrototype.oMatchesSelector;
+
+/*
+ * More performant version of Node#prependWith for Elements.
+ * @see Node#prependWith
+ */
+ElementPrototype.prependWith = function() {
+	var i = arguments.length - 1,
+		arg;
+
+	for (; i >= 0; i--) {
+		if (typeofString(arg = arguments[i])) {
+			this.insertAdjacentHTML('afterbegin', arg);
+		} else {
+			prepend(isNode(arg) ? arg : createFragment(arg), this);
+		}
+	}
+
+	return this;
+};
 
 /**
  * Gets the value of the element's specified property.
@@ -1386,6 +1543,8 @@ ElementPrototype.removeProp = function(propertyName) {
  * The Firebolt namespace object and selector function. Can also be referenced by the synonyms `FB`
  * and `$` (if `$` has not already been defined).
  * @namespace Firebolt
+ * 
+ * @property {Object} fn - Alias for `{@link NodeCollection}.prototype`.
  */
 
 /**
@@ -1397,16 +1556,11 @@ ElementPrototype.removeProp = function(propertyName) {
  * Returns a list of the elements either found in the DOM that match the passed in CSS selector or
  * created by passing an HTML string.
  * 
- * __Note #1:__ Unlike jQuery, only a document may be passed as the `context` variable. This is
- * because there are several ways to select elements with an element as the root for the selection.
- * Check out the {@link Element} interface and look at functions like {@linkcode Element#find|.find()},
- * {@linkcode Element#QSA|.QSA()}, {@linkcode Element#TAG|.TAG()}, etc.
+ * __Note #1:__ This function will only consider the input string an HTML string if the first character of the
+ * string is the opening tag character ("<"). If you want to parse an HTML string that does not begin with
+ * "<", use {@linkcode Firebolt.parseHTML|$.parseHTML()});
  * 
- * __Note #2:__ This function will only consider the input string an HTML string if the first character of the
- * string is the opening tag character (`<`). If you want to parse an HTML string that does not begin with an
- * element, use {@linkcode Firebolt.parseHTML|$.parseHTML()});
- * 
- * __Note #3:__ Since Firebolt does not use Sizzle as a CSS selector engine, only standard CSS selectors may be used.
+ * __Note #2:__ Since Firebolt does not use Sizzle as a CSS selector engine, only standard CSS selectors may be used.
  * 
  * __ProTip:__ When creating a single element, it's a better idea to use the {@linkcode Firebolt.elem|$.elem()}
  * function since it maps directly to the native `document.createElement()` function (making it much faster) and
@@ -1415,25 +1569,20 @@ ElementPrototype.removeProp = function(propertyName) {
  * @example
  * Firebolt('div, span');   // Returns a NodeCollection of all div and span elements
  * $('button.btn-success'); // Returns a NodeCollection of all button elements with the class "btn-success"
- * $('<p>content</p><br>'); // Creates DOM nodes and returns them in a NodeCollection (in this case [<p>content</p>, <br>])
+ * $('<p>content</p><br>'); // Creates DOM nodes and returns them in a NodeCollection ([<p>content</p>, <br>])
  * $.elem('div');           // Calls Firebolt's method to create a new div element 
  * 
  * @global
  * @variation 2
  * @function Firebolt
  * @param {String} string - A CSS selector string or an HTML string.
- * @param {ParentNode} [context=document] - A node to serve as the context when selecting or creating elements.
- *     Only a DOM Document may be used as the `context` argument when creating elements.
  * @returns {NodeCollection} A NodeCollection of selected elements or newly created elements.
  * @throws {SyntaxError} When the passed in string is not an HTML string (does not start with the "<" character)
  *     and is an invalid CSS selector.
  */
-function Firebolt(selector, context) {
+function Firebolt(selector) {
 	var firstChar = selector[0];
-
-	if (context) {
-		return firstChar === '<' ? parseHTML(selector, context, 1) : ncFrom(context.querySelectorAll(selector));
-	}
+	var nc, el; // Used in selecting elements by ID
 
 	if (firstChar === '.') { // Check for a single class name
 		if (!rgxNotClass.test(selector)) {
@@ -1441,14 +1590,14 @@ function Firebolt(selector, context) {
 		}
 	} else if (firstChar === '#') { // Check for a single ID
 		if (!rgxNotId.test(selector)) {
-			context = new NodeCollection(); // Use the unused context argument to be the NodeCollection
-			if (selector = getElementById(selector.slice(1))) { // Reuse the selector argument to be the element
-				context[0] = selector;
+			nc = new NodeCollection();
+			if (el = getElementById(selector.slice(1))) {
+				nc[0] = el;
 			}
-			return context;
+			return nc;
 		}
 	} else if (firstChar === '<') { // Check if the string is a HTML string
-		return parseHTML(selector, document, 1); // Pass in 1 to tell parseHTML to detach the nodes from their parent
+		return parseHTML(selector);
 	} else if (!rgxNotTag.test(selector)) { // Check for a single tag name
 		return ncFrom(getElementsByTagName(selector));
 	}
@@ -1728,7 +1877,7 @@ Firebolt.ajax = function(url, settings) {
 	}
 
 	// Merge the passed in settings object with the default values
-	settings = extendDeep({}, ajaxSettings, settings);
+	settings = extend(true, {}, ajaxSettings, settings);
 
 	url = settings.url;
 
@@ -1789,7 +1938,7 @@ Firebolt.ajax = function(url, settings) {
 		xhr = {
 			send: function() {
 				// Append the script to the head of the document to load it
-				documentHead.appendChild(script);
+				document.head.appendChild(script);
 			},
 			abort: function() {
 				textStatus = 'abort';
@@ -1915,7 +2064,7 @@ Firebolt.ajax = function(url, settings) {
  *     All options are optional.
  */
 Firebolt.ajaxSetup = function(options) {
-	return extendDeep(ajaxSettings, options);
+	return extend(true, ajaxSettings, options);
 };
 
 /**
@@ -2049,79 +2198,51 @@ function createElement(tagName, attributes) {
 Firebolt.expando = 'FB' + Date.now() + 1 / Math.random();
 
 /**
- * @summary Extend the {@link NodeCollection} prototype.
- * 
- * @description __Warning:__ Providing `false` for the `deep` argument is not supported.
- * 
- * @function Firebolt.extend
- * @variation 1
- * @param {Boolean} [deep] - If `true`, the merge becomes recursive (performs a deep copy).
- * @param {Object} object - An object with properties to add to `NodeCollection.prototype`.
- * @returns {Object} Returns `NodeCollection.prototype`.
- */
-/**
  * @summary Merge the contents of one or more objects into the first object.
  * 
  * @description __Warning:__ Providing `false` for the `deep` argument is not supported.
  * 
  * @function Firebolt.extend
- * @variation 2
  * @param {Boolean} [deep] - If `true`, the merge becomes recursive (performs a deep copy).
  * @param {Object} target - The object that will receive the new properties.
- * @param {...Object} object - One or more objects whose properties will be added to the `target` object.
+ * @param {...Object} objectN - One or more objects whose properties will be added to the `target` object.
  * @returns {Object} The `target` object.
  */
 Firebolt.extend = extend;
-function extend(target) {
-	var numArgs = arguments.length,
+function extend() {
+	var deep = (arguments[0] === true),
 		i = 1,
-		arg,
-		key;
-
-	if (numArgs < 2) {
-		return extend(NodeCollectionPrototype, target);
-	}
-
-	if (target === true) { // Do a deep extend
-		target = (numArgs > 2) ? arguments[i++] : NodeCollectionPrototype;
-		for (; i < numArgs; i++) {
-			extendDeep(target, arguments[i]);
-		}
-	} else {               // Do a shallow extend
-		for (; i < numArgs; i++) {
-			arg = arguments[i];
-			for (key in arg) {
-				if (arg[key] !== _undefined) {
-					target[key] = arg[key];
-				}
-			}
-		}
-	}
-
-	return target;
-}
-
-function extendDeep(target) {
-	var i = 1,
+		target = arguments[deep ? i++ : 0],
 		arg,
 		key,
 		val,
 		curval;
 
-	// Extend the target object, extending recursively if the new value is a plain object or array
 	for (; i < arguments.length; i++) {
 		arg = arguments[i];
 
 		for (key in arg) {
-			curval = target[key];
 			val = arg[key];
+			if (val === _undefined)
+				continue;
 
-			// If the values are not already the same and the new value is not the
-			// target (prevents endless recursion), set the new value on the target
-			if (curval !== val && val !== target) {
-				target[key] = isArray(val) ? extendDeep(isArray(curval) ? curval : [], val)     // Deep-extend arrays
-					: isPlainObject(val) ? extendDeep(isPlainObject(curval) ? curval : {}, val) // Deep-extend plain objects
-					: val; // Else just copy the value into the target
+			if (deep) {
+				curval = target[key];
+
+				// If the values are not already the same and the new value is not the
+				// target (prevents endless recursion), set the new value on the target
+				if (curval !== val && val !== target) {
+					// Deep-extend arrays and plain objects
+					if (isArray(val)) {
+						target[key] = extend(true, isArray(curval) ? curval : [], val);
+					} else if (isPlainObject(val)) {
+						target[key] = extend(true, isPlainObject(curval) ? curval : {}, val);
+					} else {
+						target[key] = val;
+					}
+				}
+			} else {
+				target[key] = val;
 			}
 		}
 	}
@@ -2150,7 +2271,9 @@ function createFragment() {
 			fragment.appendChild(item);
 		} else {
 			if (typeofString(item)) {
-				item = parseHTML(item);
+				// Pass in the 1 to tell parseHTML it doesn't need to detach the returned nodes
+				// from their creation container (because this function will do that)
+				item = parseHTML(item, document, 0, 1);
 			}
 
 			if (len = item.length) {
@@ -2232,7 +2355,7 @@ Firebolt.getScript = function(url, success) {
  * @param {String} code - The JavaScript code to execute.
  */
 Firebolt.globalEval = function(code) {
-	documentHead.appendChild(
+	document.head.appendChild(
 		createElement('script').prop('text', code)
 	).remove();
 };
@@ -2294,15 +2417,6 @@ Firebolt.isPlainObject = isPlainObject;
 function isPlainObject(obj) {
 	return obj && (obj = obj.constructor) && obj.toString().trim().slice(9, 16) == 'Object(';
 }
-
-/**
- * Indicates if the user is on a touchscreen device.
- * 
- * @constant
- * @memberOf Firebolt
- * @property {Boolean} isTouchDevice - `true` if the user is on a touchscreen device; else `false`.
- */
-Firebolt.isTouchDevice = 'ontouchstart' in window || 'onmsgesturechange' in window;
 
 /**
  * Creates a serialized representation of an array or object, suitable for use in a URL query string or Ajax request.  
@@ -2371,10 +2485,12 @@ function serialize(obj, prefix, traditional) {
  * @function Firebolt.parseHTML
  * @param {String} html - HTML string to be parsed.
  * @param {Document} [context=document] - A DOM Document to serve as the context in which the nodes will be created.
- * @returns {NodeCollection} The collection of created nodes.
+ * @param {Boolean} [single] - If truthy, returns only a single Node instead of a NodeCollection. If this parameter
+ *     is specified, you must also pass in a value for `context` (but it can just be falsy to use the default value).
+ * @returns {NodeCollection|Node} The collection of created nodes (or single Node if `single` was truthy).
  */
 Firebolt.parseHTML = parseHTML;
-function parseHTML(html, context, detachNodes, single) {
+function parseHTML(html, context, single, /*INTERNAL*/ doNotDetachNodes) {
 	var elem;
 	context = context || document;
 
@@ -2407,7 +2523,7 @@ function parseHTML(html, context, detachNodes, single) {
 
 	html = elem.childNodes;
 
-	return detachNodes ? ncFrom(html).remove() : html;
+	return doNotDetachNodes ? html : ncFrom(html).remove();
 }
 
 /**
@@ -2710,18 +2826,12 @@ Firebolt._GET(); // Just call the function to update the global $_GET object
  * @global
  * @function $1
  * @param {String} string - A CSS selector string or an HTML string.
- * @param {ParentNode} [context=document] - A node to serve as the context when selecting or creating elements.
- *     Only a DOM Document may be used as the `context` argument when creating elements.
  * @returns {?Element} - The selected element (or `null` if no element matched the selector) or the created element.
  * @throws {SyntaxError} When the passed in string is not an HTML string (does not start with the "<" character)
  *     and is an invalid CSS selector.
  */
-window.$1 = function(selector, context) {
+window.$1 = function(selector) {
 	var firstChar = selector[0];
-
-	if (context) {
-		return firstChar === '<' ? parseHTML(selector, context, 1, 1) : context.querySelector(selector);
-	}
 
 	if (firstChar === '.') { // Check for a single class name
 		if (!rgxNotClass.test(selector)) {
@@ -2732,7 +2842,7 @@ window.$1 = function(selector, context) {
 			return getElementById(selector.slice(1));
 		}
 	} else if (firstChar === '<') { // Check if the string is a HTML string
-		return parseHTML(selector, document, 1, 1); // The second 1 tells parseHTML to return only one node
+		return parseHTML(selector, document, 1); // The 1 tells parseHTML to return only one node
 	} else if (!rgxNotTag.test(selector)) { // Check for a single tag name
 		return getElementsByTagName(selector)[0];
 	}
@@ -2836,16 +2946,7 @@ window.$NAME = function(name) {
  */
 
 /**
- * @summary Adds the specified class(es) to the element.
- * 
- * @description
- * __Note:__ Unlike jQuery, the format of the space-separated classes required by Firebolt is strict.
- * Each class must name be separated by only a single space character and there cannot be whitespace
- * at the beginning or end of the string.
- * ```javascript
- * element.addClass('one  two').removeClass('three '); // Bad syntax
- * element.addClass('one two').removeClass('three');   // Correct syntax
- * ```
+ * Adds the specified class(es) to the element.
  * 
  * @function HTMLElement#addClass
  * @param {String} className - One or more classes separated by a single space to be
@@ -2858,14 +2959,22 @@ HTMLElementPrototype.addClass = function(value) {
 		// Only need to determine which classes should be added if this element's className has a value
 		if (this.className) {
 			var newClasses = value.split(' '),
-				i = 0;
+				changed = 0,
+				i = 0,
+				clazz;
 
 			value = this.className; // Reuse the value argument to build the new class name
 
 			for (; i < newClasses.length; i++) {
-				if (!this.hasClass(newClasses[i])) {
-					value += ' ' + newClasses[i];
+				clazz = newClasses[i];
+				if (clazz && !this.hasClass(clazz)) {
+					value += ' ' + clazz;
+					changed = 1;
 				}
+			}
+
+			if (!changed) { // Avoid DOM manipulation if the class name will not be changed
+				return this;
 			}
 		}
 
@@ -2875,12 +2984,6 @@ HTMLElementPrototype.addClass = function(value) {
 
 	return this;
 };
-
-/*
- * More performant version of Node#afterPut for HTMLElements.
- * @see Node#afterPut
- */
-HTMLElementPrototype.afterPut = getHTMLElementAfterPutOrPrependWith('afterend', insertAfter);
 
 /**
  * @summary Performs a custom animation of a set of CSS properties.
@@ -2907,8 +3010,8 @@ HTMLElementPrototype.afterPut = getHTMLElementAfterPutOrPrependWith('afterend', 
  * @param {String} [easing="swing"] - Indicates which easing function to use for the transition. The string can be any
  *     [CSS transition timing function](https://developer.mozilla.org/en-US/docs/Web/CSS/transition-timing-function)
  *     or "swing".
- * @param {Function} [complete()] - A function to call once the animation is complete. Inside the function, `this` will
- *     refer to the element that was animated.
+ * @param {Function} [complete()] - A function to call once the animation is complete.
+ *     Inside the function, `this` will refer to the element that was animated.
  * @see {@link http://api.jquery.com/animate/|.animate() | jQuery API Documentation}
  */
 HTMLElementPrototype.animate = function(properties, duration, easing, complete) {
@@ -3099,38 +3202,6 @@ HTMLElementPrototype.animate = function(properties, duration, easing, complete) 
 	return _this;
 };
 
-/*
- * More performant version of Node#appendWith for HTMLElements.
- * @see Node#appendWith
- */
-HTMLElementPrototype.appendWith = function() {
-	for (var i = 0, arg; i < arguments.length; i++) {
-		if (typeofString(arg = arguments[i])) {
-			this.insertAdjacentHTML('beforeend', arg);
-		} else {
-			this.appendChild(isNode(arg) ? arg : createFragment(arg));
-		}
-	}
-
-	return this;
-};
-
-/*
- * More performant version of Node#beforePut for HTMLElements.
- * @see Node#beforePut
- */
-HTMLElementPrototype.beforePut = function() {
-	for (var i = 0, arg; i < arguments.length; i++) {
-		if (typeofString(arg = arguments[i])) {
-			this.insertAdjacentHTML('beforebegin', arg);
-		} else {
-			insertBefore(isNode(arg) ? arg : createFragment(arg), this);
-		}
-	}
-
-	return this;
-};
-
 /**
  * Gets the value of the specified style property.
  * 
@@ -3150,7 +3221,7 @@ HTMLElementPrototype.beforePut = function() {
  * Sets the specified style property.
  * 
  * __Note:__ Unlike jQuery, if the passed in value is a number, it will not be converted to a string with `'px'`
- * appended to it to it prior to setting the CSS value. This helps keep the library small and fast and will force
+ * appended to it prior to setting the CSS value. This helps keep the library small and fast and will force
  * your code to be more obvious as to how it is changing the element's style (which is a good thing).
  * 
  * @function HTMLElement#css
@@ -3209,32 +3280,6 @@ HTMLElementPrototype.css = function(prop, value) {
 	}
 
 	return _this;
-};
-
-/**
- * Removes all of the element's child nodes.
- * 
- * @example
- * // HTML (before)
- * // <div id="mydiv">
- * //     <span>Inside Span</span>
- * //     Some Text
- * // </div>
- * 
- * // JavaScript
- * $ID('mydiv').empty();
- *
- * // HTML (after)
- * // <div id="mydiv"></div>
- * 
- * @function HTMLElement#empty
- */
-HTMLElementPrototype.empty = function() {
-	while (this.firstChild) {
-		this.removeChild(this.firstChild);
-	}
-
-	return this;
 };
 
 /**
@@ -3303,10 +3348,10 @@ HTMLElementPrototype.finish = function() {
  * @param {String} className - A string containing a single class name.
  * @returns {Boolean} `true` if the class name is in the element's class list; else `false`.
  */
-HTMLElementPrototype.hasClass = iframe.classList ? (iframe.classList.add('a', 'b'),
+HTMLElementPrototype.hasClass = iframe.classList ?
 	function(className) {
 		return this.classList.contains(className);
-	})
+	}
 	: function(className) { // A function for browsers that don't support the `classList` property
 		return new RegExp('(?:^|\\s)' + className + '(?:\\s|$)').test(this.className);
 	};
@@ -3319,31 +3364,6 @@ HTMLElementPrototype.hasClass = iframe.classList ? (iframe.classList.add('a', 'b
 HTMLElementPrototype.hide = function() {
 	this._$DS_ = this.style.display; // Save current display style
 	this.style.display = 'none';     // Hide the element by setting its display style to "none"
-
-	return this;
-};
-
-/**
- * Gets the element's inner HTML.
- * 
- * @function HTMLElement#html
- * @returns {String} The element's inner HTML.
- */
-/**
- * Sets the element's inner HTML.
- * 
- * __ProTip:__ Quite often, this function is used to set the text contents of elements. However, if the text
- * being set does not (or should not) contain any actual HTML, the `Node#text()` function should be used
- * instead as it will be faster and also prevent unwanted HTML from being injected into the page.
- * 
- * @function HTMLElement#html
- * @param {String} innerHTML - An HTML string.
- */
-HTMLElementPrototype.html = function(innerHTML) {
-	if (innerHTML === _undefined) {
-		return this.innerHTML; // Get
-	}
-	this.innerHTML = innerHTML; // Set
 
 	return this;
 };
@@ -3370,91 +3390,79 @@ HTMLElementPrototype.html = function(innerHTML) {
  * @param {{top: Number, left: Number}} coordinates - An object containing the properties `top` and `left`,
  *     which are numbers indicating the new top and left coordinates for the element.
  */
-HTMLElementPrototype.offset = function(coordinates) {
-	var el = this,
-		top = 0,
-		left = 0;
+HTMLElementPrototype.offset = function getOffset(coordinates) {
+	var offset = {
+		left: 0,
+		top: 0
+	};
 
+	// Set
 	if (coordinates) {
-		// If the element's position is absolute or fixed, the coordinates can be directly set
-		var position = this.css('position');
-		if (position[0] === 'a' || position[0] === 'f') {
-			return this.css({top: coordinates.top, left: coordinates.left});
+		// First check if the element has absolute or fixed positioning.
+		// If it doesn't, extra measures need to be taken to set its coordinates.
+		var position = getComputedStyle(this).position;
+
+		if (position[0] !== 'a' && position[0] !== 'f') {
+			// Reset the element's top and left values so relative coordinates can be calculated
+			this.style.left = 0;
+			this.style.top = 0;
+
+			offset = getOffset.call(this);
+
+			// Give the element relative positioning
+			this.style.position = 'relative';
 		}
 
-		// Otherwise, reset the element's top and left values so relative coordinates can be calculated
-		this.css({top: 0, left: 0});
+		// Set the element's coordinates
+		this.style.left = coordinates.left - offset.left + 'px';
+		this.style.top = coordinates.top - offset.top + 'px';
+
+		return this;
 	}
 
-	// Calculate the element's current offset
+	// Get
+	var el = this;
 	do {
-		top += el.offsetTop;
-		left += el.offsetLeft;
+		offset.left += el.offsetLeft;
+		offset.top += el.offsetTop;
 	} while (el = el.offsetParent);
 
-	// Set the element's coordinates with relative positioning or return the calculated coordinates
-	return coordinates ? this.css({
-			position: 'relative',
-			top: 0 - top + coordinates.top,
-			left: 0 - left + coordinates.left
-		})
-		: {top: top, left: left};
+	return offset;
 };
 
-/*
- * More performant version of Node#prependWith for HTMLElements.
- * @see Node#prependWith
- */
-HTMLElementPrototype.prependWith = getHTMLElementAfterPutOrPrependWith('afterbegin', prepend);
-
 /**
- * @summary Removes the specified class(es) or all classes from the element.
- * 
- * @description
- * __Note:__ Unlike jQuery, the format of the space-separated classes required by Firebolt is strict.
- * Each class must be separated by only a single space character and there cannot be whitespace at
- * the beginning or end of the string.
- * ```javascript
- * element.addClass('one  two').removeClass('three '); // Bad syntax
- * element.addClass('one two').removeClass('three');   // Correct syntax
- * ```
+ * Removes the specified class(es) or all classes from the element.
  * 
  * @function HTMLElement#removeClass
  * @param {String} [className] - One or more classes separated by a single space
  *     to be removed from the element's class attribute.
  */
-HTMLElementPrototype.removeClass = iframe.className.length !== 3 || webkitNotIOS ?
-	// Browser compatibility (IE and other old browsers) and speed boost for non-iOS WebKit browsers
-	function(value) {
+HTMLElementPrototype.removeClass = function(value) {
+	if (this.className) { // Can only remove classes if there are classes to remove
 		if (value === _undefined) {
 			this.className = ''; // Remove all classes
 		} else {
 			var remClasses = value.split(' '),
 				curClasses = this.className.split(rgxSpaceChars),
+				classesLeft = 0,
 				i = 0;
 
 			value = '';
 			for (; i < curClasses.length; i++) {
-				if (curClasses[i] && remClasses.indexOf(curClasses[i]) < 0) {
+				if (remClasses.indexOf(curClasses[i]) < 0) {
 					value += (value ? ' ' : '') + curClasses[i];
+					++classesLeft;
 				}
 			}
 
-			this.className = value;
+			if (classesLeft < curClasses.length) { // Only manipulate the DOM if the class name will be changed
+				this.className = value;
+			}
 		}
-
-		return this;
 	}
-	// All other browsers
-	: function(value) {
-		if (value === _undefined) {
-			this.className = ''; // Remove all classes
-		} else {
-			this.classList.remove.apply(this.classList, value.split(' '));
-		}
-	
-		return this;
-	};
+
+	return this;
+};
 
 /**
  * Encode a form element or form control element as a string for submission in an HTTP request.
@@ -3510,7 +3518,7 @@ HTMLElementPrototype.show = function() {
 		// Add an element of the same type as this element to the iframe's body
 		// to figure out what the default display value should be
 		inlineStyle.display = getComputedStyle(
-			documentHead.appendChild(iframe).contentDocument.body.appendChild(
+			document.head.appendChild(iframe).contentDocument.body.appendChild(
 				iframe.contentDocument.createElement(this.tagName)
 			)
 		).display;
@@ -3702,7 +3710,7 @@ HTMLElementPrototype.val = function(value) {
 	}
 
 	// Check or uncheck this depending on if this element's value is in the array of values to check
-	this.checked = value.contains(this.value);
+	this.checked = value.indexOf(this.value) >= 0;
 
 	return this;
 };
@@ -3725,7 +3733,7 @@ HTMLSelectElement[prototype].val = function(value) {
 		}
 
 		// Else return the currently selected value or null
-		//(If multiple is true, this.value will be an empty string so null will be returned)
+		// (If multiple is true, this.value will be an empty string so null will be returned)
 		return this.value || null;
 	}
 	
@@ -3735,7 +3743,7 @@ HTMLSelectElement[prototype].val = function(value) {
 		// Select or deselect each option depending on if its value is in the array of values to check.
 		// Break once an option is selected if this select element does not allow multiple selection.
 		for (; i < options.length; i++) {
-			if ((options[i].selected = value.contains(options[i].value)) && !multiple) break;
+			if ((options[i].selected = value.indexOf(options[i].value) >= 0) && !multiple) break;
 		}
 	}
 
@@ -3871,7 +3879,7 @@ NodePrototype.closest = function(selector) {
 
 	if (typeofString(selector)) {
 		// If the node is not an element, skip to its parent element
-		node = isNodeElement(node) ? node : node.parentElement;
+		node = isNodeElement(node) ? node : getParentElement(node);
 
 		// Search the node's parent elements until one matches the selector or there are no more parents
 		while (node && !node.matches(selector)) {
@@ -3888,7 +3896,11 @@ NodePrototype.closest = function(selector) {
 };
 
 /**
- * Gets the child nodes of the element as a {@link NodeCollection}.
+ * @summary Gets the child nodes of the element as a {@link NodeCollection}.
+ * 
+ * @description
+ * This method can also be used to get the content document of an iframe,
+ * if the iframe has permission to access its content document.
  * 
  * __ProTip:__ If you don't need the child nodes in a NodeCollection, you should access them using the native
  * `childNodes` property (which is a {@link NodeList}).
@@ -3897,10 +3909,16 @@ NodePrototype.closest = function(selector) {
  * @returns {NodeCollection}
  * @see {@link https://developer.mozilla.org/en-US/docs/Web/API/Node.childNodes|Node.childNodes - Web API Interfaces | MDN}
  */
-NodePrototype.contents = function(justChildNodes) { // Parameter for internal use; used by NodeCollection#contents
-	var iframeContent = this.contentDocument,
-		childNodes = this.childNodes;
-	return iframeContent ? new NodeCollection(iframeContent) : justChildNodes ? childNodes : ncFrom(childNodes);
+NodePrototype.contents = function(/*INTERNAL*/ nc) {
+	var node = this.firstChild || this.contentDocument;
+	nc = nc || new NodeCollection();
+
+	while (node) {
+		push1(nc, node);
+		node = node.nextSibling;
+	}
+
+	return nc;
 };
 
 /**
@@ -3911,7 +3929,7 @@ NodePrototype.contents = function(justChildNodes) { // Parameter for internal us
  * @param {String} [selector] - A CSS selector to match the next sibling against.
  * @returns {?Element}
  */
-NodePrototype.next = getNextOrPrevFunc(nextElementSibling, 1);
+NodePrototype.next = getNextOrPrevFunc(getNextElementSibling, 1);
 
 /**
  * Gets all following siblings of the node, optionally filtered by a selector.
@@ -3920,7 +3938,7 @@ NodePrototype.next = getNextOrPrevFunc(nextElementSibling, 1);
  * @param {String} [selector] - A CSS selector used to filter the returned set of elements.
  * @returns {NodeCollection} The set of following sibling elements in order beginning with the closest sibling.
  */
-NodePrototype.nextAll = getGetDirElementsFunc(nextElementSibling);
+NodePrototype.nextAll = getGetDirElementsFunc(getNextElementSibling);
 
 /**
  * Gets the node's following siblings, up to but not including the element matched by the selector, DOM node,
@@ -3932,7 +3950,7 @@ NodePrototype.nextAll = getGetDirElementsFunc(nextElementSibling);
  * @param {String} [filter] - A CSS selector used to filter the returned set of elements.
  * @returns {NodeCollection} - The set of following sibling elements in order beginning with the closest sibling.
  */
-NodePrototype.nextUntil = getGetDirElementsFunc(nextElementSibling, 0);
+NodePrototype.nextUntil = getGetDirElementsFunc(getNextElementSibling, 0);
 
 /* 
  * Used by Node#off
@@ -3986,8 +4004,7 @@ function removeSelectorHandler(selectorHandlers, selector, handler) {
  * @function Node#off
  * @see {@link http://api.jquery.com/off/#off|.off() | jQuery API Documentation}
  */
-NodePrototype.off = off;
-function off(events, selector, handler) {
+NodePrototype.off = function off(events, selector, handler) {
 	var eventHandlers = this._$E_,
 		eventType,
 		selectorHandlers,
@@ -4050,7 +4067,7 @@ function off(events, selector, handler) {
 	}
 
 	return this;
-}
+};
 
 /* Slightly alter the Event#stopPropagation() method for more convenient use in Node#on() */
 EventPrototype.stopPropagation = function() {
@@ -4093,7 +4110,7 @@ function nodeEventHandler(eventObject, extraParameters) {
 
 		// Remove the handler if it should only occur once
 		if (handlerObject.o) {
-			off.call(_this, eType, selector, handlerObject.f);
+			NodePrototype.off.call(_this, eType, selector, handlerObject.f);
 			handlerObject.o = 0; // Make the "one" specifier falsy so this if statement won't try to remove it again
 		}
 	}
@@ -4173,15 +4190,19 @@ function nodeEventHandler(eventObject, extraParameters) {
  * @param {*} [data] - Data to be passed to the handler in `eventObject.data` when an event is triggered.
  * @see {@link http://api.jquery.com/on/#on-events-selector-data|.on() | jQuery API Documentation}
  */
-NodePrototype.on = on;
-function on(events, selector, data, handler, /*INTERNAL*/ one) {
+NodePrototype.on = function on(events, selector, data, handler, /*INTERNAL*/ one) {
 	var eventHandlers = this._$E_ || (this._$E_ = {}),
 		selectorIsString = typeofString(selector),
 		selectorHandlers,
 		eventType,
 		i;
 
-	if (typeofString(events)) {
+	if (typeofObject(events)) {
+		// Call this function for each event and event handler in the object
+		for (i in events) {
+			on.call(this, i, selector, data, events[i], one);
+		}
+	} else {
 		events = events.split(' ');
 
 		// Organize arguments into their proper places
@@ -4217,18 +4238,13 @@ function on(events, selector, data, handler, /*INTERNAL*/ one) {
 				selectorHandlers = selectorHandlers[selector] || (selectorHandlers[selector] = []);
 
 				// Add the user-input handler and data to the array of handlers
-				push1(selectorHandlers, {f: handler, d: data, o: one});
+				push1(selectorHandlers, { f: handler, d: data, o: one });
 			}
-		}
-	} else {
-		// Call this function for each event and event handler in the object
-		for (i in events) {
-			on.call(this, i, selector, data, events[i], one);
 		}
 	}
 
 	return this;
-}
+};
 
 /**
  * Attaches a handler to an event for the node. The handler is executed at most once per event type.  
@@ -4252,7 +4268,7 @@ function on(events, selector, data, handler, /*INTERNAL*/ one) {
  * @see {@link http://api.jquery.com/one/#one-events-selector-data|.one() | jQuery API Documentation}
  */
 NodePrototype.one = function(events, selector, data, handler) {
-	return on.call(this, events, selector, data, handler, 1);
+	return NodePrototype.on.call(this, events, selector, data, handler, 1);
 };
 
 /**
@@ -4262,7 +4278,7 @@ NodePrototype.one = function(events, selector, data, handler) {
  * @param {String} [selector] - A CSS selector used to filter the returned set of elements.
  * @returns {NodeCollection} - The set of the node's ancestors, ordered from the immediate parent on up.
  */
-NodePrototype.parents = getGetDirElementsFunc('parentElement');
+NodePrototype.parents = getGetDirElementsFunc(getParentElement);
 
 /**
  * Gets the node's ancestors, up to but not including the element matched by the selector, DOM node,
@@ -4274,7 +4290,7 @@ NodePrototype.parents = getGetDirElementsFunc('parentElement');
  * @param {String} [filter] - A CSS selector used to filter the returned set of elements.
  * @returns {NodeCollection} - The set of the node's ancestors, ordered from the immediate parent on up.
  */
-NodePrototype.parentsUntil = getGetDirElementsFunc('parentElement', 0);
+NodePrototype.parentsUntil = getGetDirElementsFunc(getParentElement, 0);
 
 /**
  * Prepends content to the beginning of the node.
@@ -4304,7 +4320,7 @@ NodePrototype.prependTo = getNodeInsertingFunction(prepend);
  * @param {String} [selector] - A CSS selector to match the previous sibling against.
  * @returns {?Element}
  */
-NodePrototype.prev = getNextOrPrevFunc(previousElementSibling, 1);
+NodePrototype.prev = getNextOrPrevFunc(getPreviousElementSibling, 1);
 
 /**
  * Gets all preceeding siblings of the node, optionally filtered by a selector.
@@ -4313,7 +4329,7 @@ NodePrototype.prev = getNextOrPrevFunc(previousElementSibling, 1);
  * @param {String} [selector] - A CSS selector used to filter the returned set of elements.
  * @returns {NodeCollection} The set of preceeding sibling elements in order beginning with the closest sibling.
  */
-NodePrototype.prevAll = getGetDirElementsFunc(previousElementSibling);
+NodePrototype.prevAll = getGetDirElementsFunc(getPreviousElementSibling);
 
 /**
  * Gets the node's preceeding siblings, up to but not including the element matched by the selector, DOM node,
@@ -4325,7 +4341,7 @@ NodePrototype.prevAll = getGetDirElementsFunc(previousElementSibling);
  * @param {String} [filter] - A CSS selector used to filter the returned set of elements.
  * @returns {NodeCollection} - The set of preceeding sibling elements in order beginning with the closest sibling.
  */
-NodePrototype.prevUntil = getGetDirElementsFunc(previousElementSibling, 0);
+NodePrototype.prevUntil = getGetDirElementsFunc(getPreviousElementSibling, 0);
 
 /**
  * Inserts this node directly after the specified target(s).
@@ -4371,11 +4387,12 @@ NodePrototype.replaceWith = getNodePutOrWithFunction(replaceWith);
  * Removes this node from the DOM.
  * 
  * @function Node#remove
- * @returns void (`undefined`)
+ * @returns `undefined`
  */
 NodePrototype.remove = function() {
-	if (this.parentNode) {
-		this.parentNode.removeChild(this);
+	var parent = this.parentNode;
+	if (parent) {
+		parent.removeChild(this);
 	}
 };
 
@@ -4586,35 +4603,36 @@ NodePrototype.wrapWith = function(wrappingElement) {
  * allowing for function chaining.  
  * <br />
  */
-var
-	//<iframe> Array subclassing
-	NodeCollection = window.NodeCollection = window.NC = documentHead.appendChild(iframe).contentWindow.Array,
+var NodeCollection = window.NodeCollection = window.NC =
+		document.head.appendChild(iframe).contentWindow.Array; // <iframe> Array subclassing
 
-	// Extend NodeCollection's prototype with the Array functions
-	NodeCollectionPrototype = extend(NodeCollection[prototype], prototypeExtensions, getTypedArrayFunctions(NodeCollection)),
+// Extend NodeCollection's prototype with the Array functions and save a reference to it
+var NodeCollectionPrototype = Firebolt.fn =
+		extend(NodeCollection[prototype], prototypeExtensions, getTypedArrayFunctions(NodeCollection));
 
-	// Set and get the NodeCollection.from function (gets the custom function and not the native one even if it exists)
-	ncFrom = setAndGetArrayFromFunction(NodeCollection),
+// Polyfill NodeCollection.from() and .of() and get the custom version of .from()
+var ncFrom = setArrayStaticsAndGetFromFunction(NodeCollection);
 
-	// Save a reference to the original filter function for use later on
-	ncFilter = NodeCollectionPrototype.filter;
+var ncFilter = NodeCollectionPrototype.filter;
 
 iframe.remove(); // Remove the iframe that was used to subclass Array
 
 /* Add a bunch of functions by calling the HTMLElement version on each element in the collection */
-('addClass animate blur click empty fadeIn fadeOut fadeToggle '
-+ 'finish focus hide removeAttr removeClass removeData removeProp '
-+ 'show slideDown slideToggle slideUp stop toggle toggleClass').split(' ').forEach(function(fnName) {
-	var fn = HTMLElementPrototype[fnName];
-	NodeCollectionPrototype[fnName] = function() {
-		for (var i = 0, len = this.length; i < len; i++) {
-			if (isNodeElement(this[i])) {
-				fn.apply(this[i], arguments);
+('addClass animate blur click empty fadeIn fadeOut fadeToggle ' +
+ 'finish focus hide removeAttr removeClass removeData removeProp ' +
+ 'show slideDown slideToggle slideUp stop toggle toggleClass')
+	.split(' ')
+	.forEach(function(fnName) {
+		var fn = HTMLElementPrototype[fnName];
+		NodeCollectionPrototype[fnName] = function() {
+			for (var i = 0, len = this.length; i < len; i++) {
+				if (isNodeElement(this[i])) {
+					fn.apply(this[i], arguments);
+				}
 			}
-		}
-		return this;
-	};
-});
+			return this;
+		};
+	});
 
 /**
  * @summary
@@ -4683,17 +4701,6 @@ NodeCollectionPrototype.add = function(input) {
  */
 
 /**
- * Alias of {@link NodeCollection#afterPut} provided for similarity with jQuery.
- * 
- * Note that Firebolt does not define a method called "after" for {@link Node}. This is
- * because the DOM Living Standard has defined a native function called `after` for the
- * {@link http://dom.spec.whatwg.org/#interface-childnode|ChildNode Interface} that
- * does not function in the same way as `.afterPut()`.
- * 
- * @function NodeCollection#after
- * @see NodeCollection#afterPut
- */
-/**
  * Inserts content after each node in the collection.
  * 
  * @function NodeCollection#afterPut
@@ -4702,7 +4709,7 @@ NodeCollectionPrototype.add = function(input) {
  * @throws {TypeError|NoModificationAllowedError} The subject collection of nodes must only contain nodes that have a
  *     {@link https://developer.mozilla.org/en-US/docs/Web/API/Node.parentNode|ParentNode}.
  */
-NodeCollectionPrototype.afterPut = NodeCollectionPrototype.after = getNodeCollectionPutOrWithFunction(insertAfter);
+NodeCollectionPrototype.afterPut = getNodeCollectionPutOrWithFunction(insertAfter);
 
 /**
  * @summary Performs a custom animation of a set of CSS properties.
@@ -4741,17 +4748,6 @@ NodeCollectionPrototype.afterPut = NodeCollectionPrototype.after = getNodeCollec
 NodeCollectionPrototype.appendTo = getNodeCollectionPutToOrReplaceAllFunction('appendWith');
 
 /**
- * Alias of {@link NodeCollection#appendWith} provided for similarity with jQuery.
- * 
- * Note that Firebolt does not define a method called "append" for {@link Node}. This is
- * because the DOM Living Standard has defined a native function called `append` for the
- * {@link http://dom.spec.whatwg.org/#interface-parentnode|ParentNode Interface} that
- * does not function in the same way as `.appendWith()`.
- * 
- * @function NodeCollection#append
- * @see NodeCollection#appendWith
- */
-/**
  * Appends content to the end of each element in the collection.
  * 
  * @function NodeCollection#appendWith
@@ -4759,7 +4755,7 @@ NodeCollectionPrototype.appendTo = getNodeCollectionPutToOrReplaceAllFunction('a
  *     collections of nodes to insert.
  * @throws {HierarchyRequestError} The nodes in the collection must implement the {@link ParentNode} interface.
  */
-NodeCollectionPrototype.appendWith = NodeCollectionPrototype.append = getNodeCollectionPutOrWithFunction(append);
+NodeCollectionPrototype.appendWith = getNodeCollectionPutOrWithFunction(append);
 
 /**
  * Gets the value of the specified attribute of the first element in the collection.
@@ -4786,17 +4782,6 @@ NodeCollectionPrototype.attr = getFirstSetEachElement(HTMLElementPrototype.attr,
 });
 
 /**
- * Alias of {@link NodeCollection#beforePut} provided for similarity with jQuery.
- * 
- * Note that Firebolt does not define a method called "before" for {@link Node}. This is
- * because the DOM Living Standard has defined a native function called `before` for the
- * {@link http://dom.spec.whatwg.org/#interface-childnode|ChildNode Interface} that does
- * not function in the same way as `.beforePut()`.
- * 
- * @function NodeCollection#before
- * @see NodeCollection#beforePut
- */
-/**
  * Inserts content before each node in the collection.
  * 
  * @function NodeCollection#beforePut
@@ -4805,7 +4790,7 @@ NodeCollectionPrototype.attr = getFirstSetEachElement(HTMLElementPrototype.attr,
  * @throws {TypeError|NoModificationAllowedError} The subject collection of nodes must only contain nodes that have a
  *     {@link https://developer.mozilla.org/en-US/docs/Web/API/Node.parentNode|ParentNode}.
  */
-NodeCollectionPrototype.beforePut = NodeCollectionPrototype.before = getNodeCollectionPutOrWithFunction(insertBefore);
+NodeCollectionPrototype.beforePut = getNodeCollectionPutOrWithFunction(insertBefore);
 
 /**
  * Calls {@linkcode https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement.blur|HTMLElement#blur()}
@@ -4910,9 +4895,9 @@ NodeCollectionPrototype.contents = function() {
 		i = 0;
 
 	for (; i < this.length; i++) {
-		// Call Node#contents on the current node, passing in a truthy value so it doesn't
-		// bother making a NodeCollection out of the childNodes before returning
-		array_push.apply(nc, NodePrototype.contents.call(this[i], 1));
+		// Call Node#contents() on the current node, passing in the
+		// NodeCollection so the nodes are added directly to it
+		NodePrototype.contents.call(this[i], nc);
 	}
 
 	return nc;
@@ -4938,8 +4923,8 @@ NodeCollectionPrototype.contents = function() {
  * Sets the specified style property for each element in the collection.
  * 
  * __Note:__ Unlike jQuery, if the passed in value is a number, it will not be converted to a string with `'px'`
- * appended to it to it prior to setting the CSS value. This helps keep the library small and fast and will
- * force your code to be more obvious as to how it is changing the element's style (which is a good thing).
+ * appended to it prior to setting the CSS value. This helps keep the library small and fast and will force
+ * your code to be more obvious as to how it is changing the element's style (which is a good thing).
  * 
  * @function NodeCollection#css
  * @param {String} propertyName - The name of the style property to set.
@@ -5119,20 +5104,6 @@ NodeCollectionPrototype.item = function(index) {
 };
 
 /**
- * Alias of {@link NodeCollection#putAfter} provided for similarity with jQuery.
- * 
- * @function NodeCollection#insertAfter
- * @see NodeCollection#putAfter
- */
-
-/**
- * Alias of {@link NodeCollection#putBefore} provided for similarity with jQuery.
- * 
- * @function NodeCollection#insertBefore
- * @see NodeCollection#putBefore
- */
-
-/**
  * Get the each node's immediately following sibling element. If a selector is provided,
  * it retrieves the next sibling only if it matches that selector.
  * 
@@ -5140,7 +5111,7 @@ NodeCollectionPrototype.item = function(index) {
  * @param {String} [selector] - A CSS selector to match the next sibling against.
  * @returns {NodeCollection} The collection of sibling elements.
  */
-NodeCollectionPrototype.next = getNextOrPrevFunc(nextElementSibling);
+NodeCollectionPrototype.next = getNextOrPrevFunc(getNextElementSibling);
 
 /**
  * Gets all following siblings of each node in the collection, optionally filtered by a selector.
@@ -5323,17 +5294,6 @@ NodeCollectionPrototype.parents = getGetDirElementsFunc(HTMLElementPrototype.par
 NodeCollectionPrototype.parentsUntil = getGetDirElementsFunc(HTMLElementPrototype.parentsUntil, sortRevDocOrder);
 
 /**
- * Alias of {@link NodeCollection#prependWith} provided for similarity with jQuery.
- * 
- * Note that Firebolt does not define a method called "prepend" for {@link Node}. This is
- * because the DOM Living Standard has defined a native function called `prepend` for the
- * {@link http://dom.spec.whatwg.org/#interface-parentnode|ParentNode Interface} that
- * does not function in the same way as `.prependWith()`.
- * 
- * @function NodeCollection#prepend
- * @see NodeCollection#prependWith
- */
-/**
  * Prepends content to the beginning of each element in the collection.
  * 
  * @function NodeCollection#prependWith
@@ -5341,7 +5301,7 @@ NodeCollectionPrototype.parentsUntil = getGetDirElementsFunc(HTMLElementPrototyp
  *     collections of nodes to insert.
  * @throws {HierarchyRequestError} The nodes in the collection must implement the {@link ParentNoded} interface.
  */
-NodeCollectionPrototype.prependWith = NodeCollectionPrototype.prepend = getNodeCollectionPutOrWithFunction(prepend);
+NodeCollectionPrototype.prependWith = getNodeCollectionPutOrWithFunction(prepend);
 
 /**
  * Prepends each node in this collection to the beginning of the specified target(s).
@@ -5361,7 +5321,7 @@ NodeCollectionPrototype.prependTo = getNodeCollectionPutToOrReplaceAllFunction('
  * @param {String} [selector] - A CSS selector to match the previous sibling against.
  * @returns {NodeCollection} The collection of sibling elements.
  */
-NodeCollectionPrototype.prev = getNextOrPrevFunc(previousElementSibling);
+NodeCollectionPrototype.prev = getNextOrPrevFunc(getPreviousElementSibling);
 
 /**
  * Gets all preceeding siblings of each node in the collection, optionally filtered by a selector.
@@ -5416,8 +5376,7 @@ NodeCollectionPrototype.prop = getFirstSetEachElement(HTMLElementPrototype.prop,
  *     a set of nodes after which each node will be inserted.
  * @throws {TypeError} The target node(s) must have a {@link ParentNode}.
  */
-NodeCollectionPrototype.putAfter =
-NodeCollectionPrototype.insertAfter = getNodeCollectionPutToOrReplaceAllFunction('afterPut');
+NodeCollectionPrototype.putAfter = getNodeCollectionPutToOrReplaceAllFunction('afterPut');
 
 /**
  * Inserts each node in this collection directly before the specified target(s).
@@ -5427,8 +5386,7 @@ NodeCollectionPrototype.insertAfter = getNodeCollectionPutToOrReplaceAllFunction
  *     a set of nodes before which each node will be inserted.
  * @throws {TypeError} The target node(s) must have a {@link ParentNode}.
  */
-NodeCollectionPrototype.putBefore =
-NodeCollectionPrototype.insertBefore = getNodeCollectionPutToOrReplaceAllFunction('beforePut');
+NodeCollectionPrototype.putBefore = getNodeCollectionPutToOrReplaceAllFunction('beforePut');
 
 /**
  * Removes nodes in the collection from the DOM tree.
@@ -5440,7 +5398,7 @@ NodeCollectionPrototype.remove = function(selector) {
 	var nodes = selector ? this.filter(selector) : this,
 		i = 0;
 	for (; i < nodes.length; i++) {
-		nodes[i].remove();
+		NodePrototype.remove.call(nodes[i]);
 	}
 
 	return this;
@@ -5783,12 +5741,6 @@ NodeCollectionPrototype.wrapInner = function(wrappingElement) {
 };
 
 /**
- * A jQuery-reminiscent alias for {@linkcode NodeCollection#wrapWith}.
- * 
- * @function NodeCollection#wrap
- * @param {String|Element|Element[]) wrappingElement
- */
-/**
  * Wrap an HTML structure around each node in the collection.
  * 
  * @function NodeCollection#wrapWith
@@ -5797,7 +5749,6 @@ NodeCollectionPrototype.wrapInner = function(wrappingElement) {
  *     specify the wrapping structure.
  * @throws {TypeError} The target node(s) must have a {@link ParentNode}.
  */
-NodeCollectionPrototype.wrap =
 NodeCollectionPrototype.wrapWith = function(wrappingElement) {
 	if (wrappingElement = getWrappingElement(wrappingElement)) {
 		for (var i = 0; i < this.length; i++) {
@@ -5837,16 +5788,16 @@ NodeCollectionPrototype.wrapWith = function(wrappingElement) {
  * The following functions return the NodeCollection equivalent of the NodeList instead of
  * the NodeList itself:
  * 
- * + afterPut / after
- * + appendWith / append
+ * + afterPut
+ * + appendWith
  * + appendTo
- * + beforePut / before
+ * + beforePut
  * + copyWithin (ES6 browsers only)
  * + each
  * + fill (ES6 browsers only)
- * + putAfter / insertAfter
- * + putBefore / insertBefore
- * + prependWith / prepend
+ * + putAfter
+ * + putBefore
+ * + prependWith
  * + prependTo
  * + remove
  * + removeClass
@@ -5856,7 +5807,7 @@ NodeCollectionPrototype.wrapWith = function(wrappingElement) {
  * + sort
  * + toggleClass
  * + unwrap
- * + wrapWith / wrap
+ * + wrapWith
  * + wrapInner
  * 
  * This is because these functions will or may alter live NodeLists, as seen in this example:
@@ -6020,36 +5971,30 @@ Object.each = function(obj, callback) {
 };
 
 /**
- * Gets the passed in object's JavaScript [[class]].
+ * @summary Gets an object's JavaScript [[class]].
+ * 
+ * @description
+ * __Note:__ For certain objects, the [[class]] name may be inconsistent between
+ * browsers (mainly just the `window` and `document` objects). The only objects
+ * that are guaranteed to produce consistent results are those that are defined
+ * in the ECMAScript specification, but modern browsers are consistent enough
+ * that this function will produce consistent output for most inputs.
  * 
  * @example
  * Object.getClassOf([]);       // -> "Array"
  * Object.getClassOf({});       // -> "Object"
- * Object.getClassOf(window);   // -> "Window"
  * Object.getClassOf('string'); // -> "String"
  * Object.getClassOf(/^.+reg/); // -> "RegExp"
- * Object.getClassOf(document.querySelectorAll('div')); // -> "NodeList"
+ * Object.getClassOf(window);   // -> "Window" or "global"
+ * Object.getClassOf(document.body.childNodes); // -> "NodeList"
  * 
  * @function Object.getClassOf
- * @param {*} obj - The object whose class will be retrieved.
- * @returns String - The passed in object's class name.
+ * @param {*} obj - Any object/value.
+ * @returns {String} The passed in object's [[class]] name.
  */
 Object.getClassOf = getClassOf;
-function getClassOf(value) {
-	if (value === _undefined) {
-		return 'Undefined';
-	}
-	if (value === null) {
-		return 'Null';
-	}
-	if ((value = specialElementsMap.toString.call(value).slice(8, -1)) == 'global' ||
-		value == 'DOMWindow') { // 'DOMWindow' check is specifically for iOS 5.1
-		return 'Window';
-	}
-	if (value == 'Document') {
-		return 'HTMLDocument';
-	}
-	return value;
+function getClassOf(obj) {
+	return Object.prototype.toString.call(obj).slice(8, -1);
 }
 
 //#endregion Object
@@ -6077,7 +6022,7 @@ prototypeExtensions = {
 	 * url = url.appendParams('a=1&b=2'); // -> "www.google.com?lang=en&a=1&b=2"
 	 */
 	appendParams: function(params) {
-		return this + (this.contains('?') ? '&' : '?') + params;
+		return this + (this.indexOf('?') >= 0 ? '&' : '?') + params;
 	},
 
 	/**
@@ -6125,24 +6070,6 @@ prototypeExtensions = {
 
 /* Add ES6 functions to String.prototype */
 
-if (!StringPrototype.contains) {
-	/**
-	 * Determines whether the passed in string is in the current string.
-	 *
-	 * @function String#contains
-	 * @param {String} searchString - The string to be searched for.
-	 * @param {Number} [position=0] - The position in this string at which to begin the search.
-	 * @returns {Boolean} `true` if this string contains the search string; else `false`.
-	 * @example
-	 * var str = "Winter is coming.";
-	 * alert( str.contains(" is ") );    // true
-	 * alert( str.contains("summer") );  // false
-	 */
-	prototypeExtensions.contains = function(searchString, position) {
-		return this.toString().indexOf(searchString, position) >= 0;
-	};
-}
-
 if (!StringPrototype.endsWith) {
 	/**
 	 * Determines if a string ends with the characters of another string.
@@ -6166,6 +6093,25 @@ if (!StringPrototype.endsWith) {
 	};
 }
 
+if (!StringPrototype.includes) {
+	/**
+	 * Determines whether the passed in string is in the current string.
+	 * 
+	 * @example
+	 * var str = "Winter is coming.";
+	 * alert( str.includes(" is ") );    // true
+	 * alert( str.includes("summer") );  // false
+	 *
+	 * @function String#includes
+	 * @param {String} searchString - The string to be searched for.
+	 * @param {Number} [position=0] - The position in this string at which to begin the search.
+	 * @returns {Boolean} `true` if this string contains the search string, `false` otherwise.
+	 */
+	prototypeExtensions.includes = function() {
+		return StringPrototype.indexOf.apply(this, arguments) >= 0;
+	};
+}
+
 if (!StringPrototype.repeat) {
 	/**
 	 * Copies the current string a given number of times and returns the new string.
@@ -6186,7 +6132,7 @@ if (!StringPrototype.repeat) {
 		if (!isFinite(count) || count < 0) {
 			throw new RangeError('Invalid count value');
 		}
-		// Thanks to V8 for the algorithm: https://github.com/v8/v8-git-mirror/blob/master/src/harmony-string.js#L27
+
 		var str = this.toString(),
 			retStr = '';
 		for (;;) {
@@ -6221,42 +6167,6 @@ if (!StringPrototype.startsWith) {
 definePrototypeExtensionsOn(StringPrototype, prototypeExtensions);
 
 //#endregion String
-
-
-//#region ========================= Browser Fixes ============================
-
-if (Firebolt.text()[nextElementSibling] === _undefined) {
-	// Fix the `nextElementSibling` and `previousElementSibling` properties for ChildNodes
-	// in browsers than only support them on Elements
-	[CharacterData[prototype], DocumentType[prototype]].forEach(function(proto) {
-		defineProperty(proto, nextElementSibling, {
-			get: function() {
-				var sibling = this;
-				while ((sibling = sibling.nextSibling) && sibling.nodeType !== 1);
-				return sibling;
-			}
-		});
-		defineProperty(proto, previousElementSibling, {
-			get: function() {
-				var sibling = this;
-				while ((sibling = sibling.previousSibling) && sibling.nodeType !== 1);
-				return sibling;
-			}
-		});
-	});
-}
-
-if (document.parentElement === _undefined) {
-	// Fix the parentElement property for Nodes in browsers than only support it on Element
-	defineProperty(NodePrototype, 'parentElement', {
-		get: function() {
-			var parent = this.parentNode;
-			return parent && isNodeElement(parent) ? parent : null;
-		}
-	});
-}
-
-//#endregion Browser Compatibility and Speed Boosters
 
 })(self, document, Array, Object, decodeURIComponent, encodeURIComponent,
    getComputedStyle, parseFloat, setTimeout, clearTimeout);
