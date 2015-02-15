@@ -47,7 +47,7 @@
     </div>
   </div>
 
-  <main class="container">
+  <main class="container" id="main">
     <header class="page-header">
       <h1>Firebolt Downloads and CDN</h1>
     </header>
@@ -107,7 +107,7 @@
       var version = releases[i];
       var li = document.createElement('li');
       var aDownload = document.createElement('a');
-      var aApi = aDownload.cloneNode();
+      var aApi = document.createElement('a');
 
       aDownload.href = '/v/' + version + '/Firebolt.zip';
       aDownload.title = 'Download the v' + version + ' release';
@@ -123,8 +123,8 @@
       li.appendChild(aApi);
 
       ul.appendChild(li);
-    };
-    document.getElementsByTagName('main')[0].appendChild(ul);
+    }
+    document.getElementById('main').appendChild(ul);
   </script>
 
   <!-- Firebolt -->
